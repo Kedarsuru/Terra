@@ -1,178 +1,167 @@
 terraform {
-  required_version = ">= 1.0"
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
   }
+  required_version = ">= 1.0"
 }
 
 provider "aws" {
   region = "ap-south-1"
+  # Don’t set access_key or secret_key here — let Terraform pick from environment / Jenkins / IAM role
 }
 
-# ========== VPC & Networking ==========
+# --- VPC and Networking ---
 
-data "aws_availability_zones" "available" {}
+data "aws_availability_zones" "azs" {}
 
 resource "aws_vpc" "eks_vpc" {
   cidr_block = "10.0.0.0/16"
   tags = {
-    Name = "eks-single-script-vpc"
+    Name = "eks-simple-vpc"
   }
 }
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.eks_vpc.id
-  tags = {
-    Name = "eks-single-script-igw"
-  }
+  tags = { Name = "eks-simple-igw" }
 }
 
-# Public subnets in 3 AZs
-resource "aws_subnet" "public_0" {
-  vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = "10.0.0.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
+# Public subnets
+resource "aws_subnet" "public0" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = "10.0.0.0/24"
+  availability_zone = data.aws_availability_zones.azs.names[0]
   map_public_ip_on_launch = true
-  tags = { Name = "eks-public-0" }
+  tags = { Name = "eks-public0" }
 }
-resource "aws_subnet" "public_1" {
-  vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
+resource "aws_subnet" "public1" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = data.aws_availability_zones.azs.names[1]
   map_public_ip_on_launch = true
-  tags = { Name = "eks-public-1" }
+  tags = { Name = "eks-public1" }
 }
-resource "aws_subnet" "public_2" {
-  vpc_id                  = aws_vpc.eks_vpc.id
-  cidr_block              = "10.0.2.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[2]
+resource "aws_subnet" "public2" {
+  vpc_id            = aws_vpc.eks_vpc.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = data.aws_availability_zones.azs.names[2]
   map_public_ip_on_launch = true
-  tags = { Name = "eks-public-2" }
+  tags = { Name = "eks-public2" }
 }
 
-# Private subnets in 3 AZs
-resource "aws_subnet" "private_0" {
+# Private subnets
+resource "aws_subnet" "private0" {
   vpc_id            = aws_vpc.eks_vpc.id
   cidr_block        = "10.0.10.0/24"
-  availability_zone = data.aws_availability_zones.available.names[0]
-  tags = { Name = "eks-private-0" }
+  availability_zone = data.aws_availability_zones.azs.names[0]
+  tags = { Name = "eks-private0" }
 }
-resource "aws_subnet" "private_1" {
+resource "aws_subnet" "private1" {
   vpc_id            = aws_vpc.eks_vpc.id
   cidr_block        = "10.0.11.0/24"
-  availability_zone = data.aws_availability_zones.available.names[1]
-  tags = { Name = "eks-private-1" }
+  availability_zone = data.aws_availability_zones.azs.names[1]
+  tags = { Name = "eks-private1" }
 }
-resource "aws_subnet" "private_2" {
+resource "aws_subnet" "private2" {
   vpc_id            = aws_vpc.eks_vpc.id
   cidr_block        = "10.0.12.0/24"
-  availability_zone = data.aws_availability_zones.available.names[2]
-  tags = { Name = "eks-private-2" }
+  availability_zone = data.aws_availability_zones.azs.names[2]
+  tags = { Name = "eks-private2" }
 }
 
-# Route table / routing for public subnets
+# Route table for public subnets
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.eks_vpc.id
   tags = { Name = "eks-public-rt" }
 }
-resource "aws_route" "public_route" {
+resource "aws_route" "public_default" {
   route_table_id         = aws_route_table.public_rt.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.igw.id
 }
-resource "aws_route_table_association" "public_assoc_0" {
-  subnet_id      = aws_subnet.public_0.id
+resource "aws_route_table_association" "pub_assoc0" {
+  subnet_id      = aws_subnet.public0.id
   route_table_id = aws_route_table.public_rt.id
 }
-resource "aws_route_table_association" "public_assoc_1" {
-  subnet_id      = aws_subnet.public_1.id
+resource "aws_route_table_association" "pub_assoc1" {
+  subnet_id      = aws_subnet.public1.id
   route_table_id = aws_route_table.public_rt.id
 }
-resource "aws_route_table_association" "public_assoc_2" {
-  subnet_id      = aws_subnet.public_2.id
+resource "aws_route_table_association" "pub_assoc2" {
+  subnet_id      = aws_subnet.public2.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-# NAT Gateway (one) + EIP
+# NAT Gateway for private subnets
 resource "aws_eip" "nat_eip" {
-  vpc = true
-  tags = {
-    Name = "eks-nat-eip"
-  }
+  domain = "vpc"
+  tags = { Name = "eks-nat-eip" }
 }
-resource "aws_nat_gateway" "nat_gw" {
+resource "aws_nat_gateway" "natgw" {
   allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public_0.id
-  tags = {
-    Name = "eks-nat-gw"
-  }
+  subnet_id     = aws_subnet.public0.id
+  tags = { Name = "eks-nat-gw" }
 }
 
 # Route tables for private subnets
-resource "aws_route_table" "private_rt_0" {
+resource "aws_route_table" "private_rt0" {
   vpc_id = aws_vpc.eks_vpc.id
-  tags = { Name = "eks-private-rt-0" }
+  tags = { Name = "eks-priv-rt0" }
 }
-resource "aws_route" "private_rt_0_route" {
-  route_table_id         = aws_route_table.private_rt_0.id
+resource "aws_route" "priv0_default" {
+  route_table_id         = aws_route_table.private_rt0.id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat_gw.id
+  nat_gateway_id         = aws_nat_gateway.natgw.id
 }
-resource "aws_route_table_association" "private_assoc_0" {
-  subnet_id      = aws_subnet.private_0.id
-  route_table_id = aws_route_table.private_rt_0.id
+resource "aws_route_table_association" "priv_assoc0" {
+  subnet_id      = aws_subnet.private0.id
+  route_table_id = aws_route_table.private_rt0.id
 }
 
-resource "aws_route_table" "private_rt_1" {
+resource "aws_route_table" "private_rt1" {
   vpc_id = aws_vpc.eks_vpc.id
-  tags = { Name = "eks-private-rt-1" }
+  tags = { Name = "eks-priv-rt1" }
 }
-resource "aws_route" "private_rt_1_route" {
-  route_table_id         = aws_route_table.private_rt_1.id
+resource "aws_route" "priv1_default" {
+  route_table_id         = aws_route_table.private_rt1.id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat_gw.id
+  nat_gateway_id         = aws_nat_gateway.natgw.id
 }
-resource "aws_route_table_association" "private_assoc_1" {
-  subnet_id      = aws_subnet.private_1.id
-  route_table_id = aws_route_table.private_rt_1.id
+resource "aws_route_table_association" "priv_assoc1" {
+  subnet_id      = aws_subnet.private1.id
+  route_table_id = aws_route_table.private_rt1.id
 }
 
-resource "aws_route_table" "private_rt_2" {
+resource "aws_route_table" "private_rt2" {
   vpc_id = aws_vpc.eks_vpc.id
-  tags = { Name = "eks-private-rt-2" }
+  tags = { Name = "eks-priv-rt2" }
 }
-resource "aws_route" "private_rt_2_route" {
-  route_table_id         = aws_route_table.private_rt_2.id
+resource "aws_route" "priv2_default" {
+  route_table_id         = aws_route_table.private_rt2.id
   destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat_gw.id
+  nat_gateway_id         = aws_nat_gateway.natgw.id
 }
-resource "aws_route_table_association" "private_assoc_2" {
-  subnet_id      = aws_subnet.private_2.id
-  route_table_id = aws_route_table.private_rt_2.id
+resource "aws_route_table_association" "priv_assoc2" {
+  subnet_id      = aws_subnet.private2.id
+  route_table_id = aws_route_table.private_rt2.id
 }
 
-# ========== IAM Roles & Policies ==========
+# --- IAM roles ---
 
 resource "aws_iam_role" "eks_cluster_role" {
-  name = "eks-single-script-cluster-role"
+  name = "eks-simple-cluster-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "sts:AssumeRole"
-        Effect    = "Allow"
-        Principal = {
-          Service = "eks.amazonaws.com"
-        }
-      }
-    ]
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "eks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
   })
 }
-
 resource "aws_iam_role_policy_attachment" "cluster_attach1" {
   role       = aws_iam_role.eks_cluster_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
@@ -183,21 +172,16 @@ resource "aws_iam_role_policy_attachment" "cluster_attach2" {
 }
 
 resource "aws_iam_role" "eks_node_role" {
-  name = "eks-single-script-node-role"
+  name = "eks-simple-node-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action    = "sts:AssumeRole"
-        Effect    = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      }
-    ]
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
   })
 }
-
 resource "aws_iam_role_policy_attachment" "node_attach1" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
@@ -211,24 +195,20 @@ resource "aws_iam_role_policy_attachment" "node_attach3" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-# ========== EKS Cluster & Node Group ==========
+# --- EKS cluster and node group ---
 
-# Use aws_eks_cluster resource
-resource "aws_eks_cluster" "eks_cluster" {
-  name     = "single-script-eks-cluster"
-  version  = "1.27"
-
+resource "aws_eks_cluster" "eks" {
+  name    = "simple-eks-cluster"
+  version = "1.27"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
   vpc_config {
     subnet_ids = [
-      aws_subnet.private_0.id,
-      aws_subnet.private_1.id,
-      aws_subnet.private_2.id
+      aws_subnet.private0.id,
+      aws_subnet.private1.id,
+      aws_subnet.private2.id
     ]
-
     endpoint_public_access = true
-    # You can optionally restrict public access or setup private access
   }
 
   depends_on = [
@@ -237,55 +217,49 @@ resource "aws_eks_cluster" "eks_cluster" {
   ]
 
   tags = {
-    Name = "single-script-eks-cluster"
+    Name = "simple-eks-cluster"
   }
 }
 
-# Create a managed node group
-resource "aws_eks_node_group" "eks_node_group" {
-  cluster_name    = aws_eks_cluster.eks_cluster.name
-  node_group_name = "single-script-node-group"
+resource "aws_eks_node_group" "ng" {
+  cluster_name    = aws_eks_cluster.eks.name
+  node_group_name = "simple-eks-nodegroup"
   node_role_arn   = aws_iam_role.eks_node_role.arn
   subnet_ids = [
-    aws_subnet.private_0.id,
-    aws_subnet.private_1.id,
-    aws_subnet.private_2.id
+    aws_subnet.private0.id,
+    aws_subnet.private1.id,
+    aws_subnet.private2.id
   ]
 
   scaling_config {
     desired_size = 2
-    max_size     = 3
     min_size     = 1
+    max_size     = 3
   }
 
   instance_types = ["t3.medium"]
 
   depends_on = [
-    aws_eks_cluster.eks_cluster,
+    aws_eks_cluster.eks,
     aws_iam_role_policy_attachment.node_attach1,
     aws_iam_role_policy_attachment.node_attach2,
     aws_iam_role_policy_attachment.node_attach3
   ]
 
   tags = {
-    Name = "single-script-eks-node"
+    Name = "simple-eks-node"
   }
 }
 
-# ========== Outputs ==========
+# --- Outputs ---
 
-output "eks_cluster_name" {
-  value = aws_eks_cluster.eks_cluster.name
+output "cluster_name" {
+  value = aws_eks_cluster.eks.name
 }
-
-output "eks_cluster_endpoint" {
-  value = aws_eks_cluster.eks_cluster.endpoint
+output "cluster_endpoint" {
+  value = aws_eks_cluster.eks.endpoint
 }
-
-output "eks_cluster_security_group_id" {
-  value = aws_eks_cluster.eks_cluster.vpc_config[0].cluster_security_group_id
-}
-
-output "eks_node_role_arn" {
+output "node_role_arn" {
   value = aws_iam_role.eks_node_role.arn
 }
+
