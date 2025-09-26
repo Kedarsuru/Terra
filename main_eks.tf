@@ -198,7 +198,7 @@ resource "aws_iam_role_policy_attachment" "node_attach3" {
 # --- EKS cluster and node group ---
 
 resource "aws_eks_cluster" "eks" {
-  name    = "simple-eks-cluster"
+  name    = "clients_cluster"
   version = "1.31"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
@@ -217,7 +217,7 @@ resource "aws_eks_cluster" "eks" {
   ]
 
   tags = {
-    Name = "simple-eks-cluster"
+    Name = "clients_cluster"
   }
 }
 
