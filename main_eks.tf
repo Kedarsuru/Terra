@@ -199,7 +199,7 @@ resource "aws_iam_role_policy_attachment" "node_attach3" {
 
 resource "aws_eks_cluster" "eks" {
   name    = "simple-eks-cluster"
-  version = "1.27"
+  version = "1.31"
   role_arn = aws_iam_role.eks_cluster_role.arn
 
   vpc_config {
